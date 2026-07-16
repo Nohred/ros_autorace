@@ -43,30 +43,8 @@ turtlebot3_autorace_mission/
 
 - This repository is based on the public TurtleBot3 AutoRace project and should be understood as a modified implementation built on top of that original work.
 - Some files were adapted to fit the challenge requirements and improve practical performance during testing.
-- It is recommended to remove generated Python cache files (`__pycache__/`) from version control before publishing the final version of the repository.
 
-## Suggested cleanup before publishing
 
-Add a `.gitignore` file if you do not already have one:
+## Demo
 
-```gitignore
-__pycache__/
-*.pyc
-*.pyo
-*.log
-build/
-install/
-log/
-```
-
-Then remove cached generated files from Git tracking:
-
-```bash
-find . -type d -name "__pycache__" -exec git rm -r --cached {} +
-git add .gitignore
-git commit -m "Remove cache files and update gitignore"
-```
-
-## Acknowledgment
-
-This work is a modification of the public TurtleBot3 AutoRace codebase for ROS 2 Humble, extended and adapted for challenge use with additional mission logic and node-level improvements.
+[![Watch the AutoRace run](docs/autorace_thumbnail.png)](https://youtu.be/AlN41Yxkl2s)
