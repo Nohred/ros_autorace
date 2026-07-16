@@ -28,7 +28,8 @@ def generate_launch_description():
             output='screen',
             remappings=[
                 ('/control/lane', '/detect/lane'),
-                ('/control/cmd_vel', '/cmd_vel')
+                # ('/control/cmd_vel', '/cmd_vel') # viejo topico
+                ('/control/cmd_vel', '/control/cmd_vel_lane') # Nuevo tópico
             ]
         )
     return LaunchDescription([

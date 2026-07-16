@@ -29,6 +29,7 @@ from sensor_msgs.msg import Image
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Bool
 from std_msgs.msg import UInt8
+from rcl_interfaces.msg import SetParametersResult
 
 
 def euler_from_quaternion(msg):
@@ -61,6 +62,10 @@ class AvoidConstruction(Node):
 
     def __init__(self):
         super().__init__('avoid_construction')
+
+        self.declare_parameter('enabled', False)
+        self.enabled = self.get_parameter('enabled').value
+        self.add_on_set_parameters_callback(self.on_parameter_change)
 
         # Subscribe
         self.lidar_sub = self.create_subscription(
@@ -109,15 +114,16 @@ class AvoidConstruction(Node):
         self.lane_detected = False
 
         # Parameter settings
-        self.danger_distance = 0.24    # Danger zone y threshold (meters)
-        self.danger_width = 0.12       # Danger zone x width (meters)
-        self.speed = 0.03              # Forward speed during avoidance
+        self.danger_distance = 0.375    # Danger zone y threshold (meters) 0.24
+        self.danger_width = 0.12       # Danger zone x width (meters) 0.12
+        self.speed = 0.02              # Forward speed during avoidance 0.3
 
         # PD control parameters (for turning)
         self.turn_Kp = 0.45
         self.turn_Kd = 0.03
         self.turn_threshold = 0.05     # Tolerance to decide when turning is complete
         self.last_turn_error = 0.0
+        self.turn_angle = 55
 
         # State machine variables
         # States: 'NORMAL', 'AVOID_TURN', 'AVOID_STRAIGHT', 'RETURN_TURN'
@@ -138,9 +144,29 @@ class AvoidConstruction(Node):
 
         self.timer = self.create_timer(0.1, self.process_loop)
 
+    def on_parameter_change(self, params):
+        for param in params:
+            if param.name == 'enabled':
+                self.enabled = param.value
+                self.get_logger().info(f'enabled set to {param.value}')
+                if not self.enabled:
+                    self.reset_state()
+        return SetParametersResult(successful=True)
+    
+    def reset_state(self):
+        self.state = 'NORMAL'
+        self.turn_direction = None
+        self.desired_theta = None
+        self.original_theta = None
+        self.last_turn_error = 0.0
+        self.publish_active(False)
+        self.avoid_cmd_pub.publish(Twist())
+
     def lidar_callback(self, msg):
+        if not self.enabled:
+            return
         self.lidar_points = self.convert_laserscan_to_points(msg)
-        self.visualization(self.lidar_points)
+        # self.visualization(self.lidar_points)
 
     def convert_laserscan_to_points(self, msg):
         angles = np.linspace(msg.angle_min, msg.angle_max, len(msg.ranges))
@@ -165,6 +191,8 @@ class AvoidConstruction(Node):
         self.current_pos_y = msg.pose.pose.position.y
 
     def image_callback(self, msg):
+        if not self.enabled:
+            return
         if self.state == 'NORMAL':
             return
         try:
@@ -185,10 +213,9 @@ class AvoidConstruction(Node):
 
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(blur, 50, 150)
+        edges = cv2.Canny(blur, 30, 100) # 50 150
         lines = cv2.HoughLinesP(
-            edges, 1, np.pi/180, threshold=50, minLineLength=100, maxLineGap=10
-        )
+            edges, 1, np.pi/180, threshold=30, minLineLength=40, maxLineGap=20) #50 100 10
 
         positive_found = False
         negative_found = False
@@ -198,7 +225,7 @@ class AvoidConstruction(Node):
                 for x1, y1, x2, y2 in line:
                     # Calculate line length
                     line_length = np.hypot(x2 - x1, y2 - y1)
-                    if line_length < 100:
+                    if line_length < 40: # 100
                         continue
                     # Check if the line covers near the top and bottom of the ROI
                     if max(y1, y2) < margin or min(y1, y2) > (roi_size - margin):
@@ -229,6 +256,8 @@ class AvoidConstruction(Node):
         self.image_pub.publish(result_msg)
 
     def process_loop(self):
+        if not self.enabled:
+            return
         if self.state == 'NORMAL':
             self.process_normal_state()
         elif self.state == 'AVOID_TURN':
@@ -253,12 +282,12 @@ class AvoidConstruction(Node):
                     if self.lane_state == 1:
                         self.turn_direction = 'right'
                         self.desired_theta = self.normalize_angle(
-                            self.current_theta - math.radians(80)
+                            self.current_theta - math.radians(self.turn_angle) # Turn angle
                         )
                     elif self.lane_state == 3:
                         self.turn_direction = 'left'
                         self.desired_theta = self.normalize_angle(
-                            self.current_theta + math.radians(80)
+                            self.current_theta + math.radians(self.turn_angle)
                         )
                     self.get_logger().info(f'Avoidance mode on: turning {self.turn_direction}.')
                     self.state = 'AVOID_TURN'

@@ -34,6 +34,13 @@ def generate_launch_description():
         )
     calibration_mode = LaunchConfiguration('calibration_mode')
 
+    enabled_arg = DeclareLaunchArgument(
+        'enabled',
+        default_value='True',
+        description='Enable or disable traffic light detection'
+    )
+    enabled = LaunchConfiguration('enabled')
+
     # path for parameter file
     pkg_share = get_package_share_directory('turtlebot3_autorace_detect')
     param_file = os.path.join(pkg_share, 'param', 'traffic_light', 'traffic_light.yaml')
@@ -46,6 +53,7 @@ def generate_launch_description():
         output='screen',
         parameters=[
             param_file,
+            {'enabled': enabled},
             {'is_calibration_mode': calibration_mode}
         ],
         remappings=[
@@ -64,5 +72,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         calibration_mode_arg,
+        enabled_arg,
         detect_traffic_light_node,
     ])

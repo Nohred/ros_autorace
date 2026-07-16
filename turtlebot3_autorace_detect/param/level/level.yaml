@@ -3,8 +3,8 @@
     ros__parameters:
       red:
         hue_l: 0
-        hue_h: 22
-        saturation_l: 173
+        hue_h: 28
+        saturation_l: 20
         saturation_h: 255
-        lightness_l: 106
+        lightness_l: 166
         lightness_h: 255

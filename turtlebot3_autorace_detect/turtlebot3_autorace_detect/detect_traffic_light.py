@@ -29,6 +29,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
 from sensor_msgs.msg import Image
+from std_msgs.msg import UInt8
 
 
 class DetectTrafficLight(Node):
@@ -43,6 +44,8 @@ class DetectTrafficLight(Node):
             integer_range=[IntegerRange(from_value=0, to_value=255, step=1)],
             description='Saturation/Lightness Value (0~255)'
         )
+
+        self.declare_parameter("enabled", False)
 
         self.declare_parameter(
             'red.hue_l', 0, parameter_descriptor_hue)
@@ -84,6 +87,9 @@ class DetectTrafficLight(Node):
             'green.lightness_h', 255, parameter_descriptor_saturation_lightness)
 
         self.declare_parameter('is_calibration_mode', False)
+
+        self.enabled = self.get_parameter("enabled").value
+        self.add_on_set_parameters_callback(self.on_parameter_change)
 
         self.hue_red_l = self.get_parameter(
             'red.hue_l').get_parameter_value().integer_value
@@ -163,6 +169,7 @@ class DetectTrafficLight(Node):
                     Image, '/detect/image_output_sub2', 1)
                 self.pub_image_green_light = self.create_publisher(
                     Image, '/detect/image_output_sub3', 1)
+        self.pub_traffic_light = self.create_publisher(UInt8, '/detect/traffic_light', 10)
 
         self.cvBridge = CvBridge()
         self.cv_image = None
@@ -180,8 +187,11 @@ class DetectTrafficLight(Node):
         time.sleep(1)
         self.timer = self.create_timer(0.1, self.timer_callback)
 
-    def get_detect_traffic_light_param(self, params):
+    def on_parameter_change(self, params):
         for param in params:
+            if param.name == 'enabled':
+                self.enabled = param.value
+                self.get_logger().info(f'enabled set to: {param.value}')
             if param.name == 'red.hue_l':
                 self.hue_red_l = param.value
                 self.get_logger().info(f'red.hue_l set to: {param.value}')
@@ -239,6 +249,9 @@ class DetectTrafficLight(Node):
         return SetParametersResult(successful=True)
 
     def get_image(self, image_msg):
+        if not self.enabled:
+            return
+
         # Processing every 3 frames to reduce frame processing load
         if self.counter % 3 != 0:
             self.counter += 1
@@ -259,7 +272,7 @@ class DetectTrafficLight(Node):
         self.is_image_available = True
 
     def timer_callback(self):
-        if self.is_image_available:
+        if self.enabled and self.is_image_available:
             self.find_traffic_light()
 
     def find_traffic_light(self):
@@ -269,6 +282,9 @@ class DetectTrafficLight(Node):
         if detect_red:
             cv2.putText(self.cv_image, 'RED', (self.point_x, self.point_y),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+            msg = UInt8()
+            msg.data = 1
+            self.pub_traffic_light.publish(msg)
 
         cv_image_mask_yellow = self.mask_yellow_traffic_light()
         cv_image_mask_yellow = cv2.GaussianBlur(cv_image_mask_yellow, (5, 5), 0)
@@ -276,6 +292,9 @@ class DetectTrafficLight(Node):
         if detect_yellow:
             cv2.putText(self.cv_image, 'YELLOW', (self.point_x, self.point_y),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 255))
+            msg = UInt8()
+            msg.data = 2
+            self.pub_traffic_light.publish(msg)
 
         cv_image_mask_green = self.mask_green_traffic_light()
         cv_image_mask_green = cv2.GaussianBlur(cv_image_mask_green, (5, 5), 0)
@@ -283,6 +302,9 @@ class DetectTrafficLight(Node):
         if detect_green:
             cv2.putText(self.cv_image, 'GREEN', (self.point_x, self.point_y),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 255, 0))
+            msg = UInt8()
+            msg.data = 3
+            self.pub_traffic_light.publish(msg)
 
         if self.pub_image_type == 'compressed':
             self.pub_image_traffic_light.publish(

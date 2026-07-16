@@ -29,19 +29,35 @@ def generate_launch_description():
         description='Mission type [intersection, construction, parking, level_crossing, tunnel]'
     )
 
+    traffic_sign_topic_arg = DeclareLaunchArgument(
+        'traffic_sign_topic',
+        default_value='/detect/traffic_sign',
+        description='Output topic for the detected traffic sign'
+    )
+
+    enabled_arg = DeclareLaunchArgument(
+        'enabled',
+        default_value='False',
+        description='Enable or disable traffic sign detection'
+    )
+
     mission = LaunchConfiguration('mission')
+    traffic_sign_topic = LaunchConfiguration('traffic_sign_topic')
+    enabled = LaunchConfiguration('enabled')
 
     detect_sign_node = Node(
         package='turtlebot3_autorace_detect',
         executable=['detect_', mission, '_sign'],
         name=['detect_', mission, '_sign'],
         output='screen',
+        parameters=[{'enabled': enabled}],
         remappings=[
             ('/detect/image_input', '/camera/image_compensated'),
             ('/detect/image_input/compressed', '/camera/image_compensated/compressed'),
+            ('/detect/traffic_sign', traffic_sign_topic),
             ('/detect/image_output', '/detect/image_traffic_sign'),
             ('/detect/image_output/compressed', '/detect/image_traffic_sign/compressed'),
         ]
     )
 
-    return LaunchDescription([mission_arg, detect_sign_node])
+    return LaunchDescription([mission_arg, traffic_sign_topic_arg, enabled_arg, detect_sign_node])

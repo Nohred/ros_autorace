@@ -22,6 +22,7 @@ import os
 import cv2
 from cv_bridge import CvBridge
 import numpy as np
+from rcl_interfaces.msg import SetParametersResult
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage
@@ -33,6 +34,10 @@ class DetectSign(Node):
 
     def __init__(self):
         super().__init__('detect_sign')
+
+        self.declare_parameter('enabled', False)
+        self.enabled = self.get_parameter('enabled').value
+        self.add_on_set_parameters_callback(self.on_parameter_change)
 
         self.sub_image_type = 'raw'  # you can choose image type 'compressed', 'raw'
         self.pub_image_type = 'compressed'  # you can choose image type 'compressed', 'raw'
@@ -71,6 +76,13 @@ class DetectSign(Node):
 
         self.get_logger().info('DetectSign Node Initialized')
 
+    def on_parameter_change(self, params):
+        for param in params:
+            if param.name == 'enabled':
+                self.enabled = param.value
+                self.get_logger().info(f'enabled set to: {param.value}')
+        return SetParametersResult(successful=True)
+
     def fnPreproc(self):
         # Initiate SIFT detector
         self.sift = cv2.SIFT_create()
@@ -101,6 +113,9 @@ class DetectSign(Node):
         return err
 
     def cbFindTrafficSign(self, image_msg):
+        if not self.enabled:
+            return
+
         # drop the frame to 1/5 (6fps) because of the processing speed.
         # This is up to your computer's operating power.
         if self.counter % 3 != 0:
@@ -116,11 +131,16 @@ class DetectSign(Node):
         elif self.sub_image_type == 'raw':
             cv_image_input = self.cvBridge.imgmsg_to_cv2(image_msg, 'bgr8')
 
-        MIN_MATCH_COUNT = 4
-        MIN_MSE_DECISION = 50000
+        MIN_MATCH_COUNT = 8
+        MIN_MSE_DECISION = 40000
 
         # find the keypoints and descriptors with SIFT
-        kp1, des1 = self.sift.detectAndCompute(cv_image_input, None)
+        gray_input = cv2.cvtColor(cv_image_input, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        gray_input = clahe.apply(gray_input)
+        
+        kp1, des1 = self.sift.detectAndCompute(gray_input, None)
+        # kp1, des1 = self.sift.detectAndCompute(cv_image_input, None)
 
         matches_stop = self.flann.knnMatch(des1, self.des_stop, k=2)
 

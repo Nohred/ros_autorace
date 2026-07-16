@@ -51,14 +51,15 @@ def fnArrangeIndexOfPoint(arr):
     arr_idx = list(range(len(arr)))
     for i in range(len(arr)):
         for j in range(i + 1, len(arr)):
-            if new_arr[i] < new_arr[j]:
+            # if new_arr[i] < new_arr[j]:
+            if new_arr[i] > new_arr[j]:
                 new_arr[i], new_arr[j] = new_arr[j], new_arr[i]
                 arr_idx[i], arr_idx[j] = arr_idx[j], arr_idx[i]
     return arr_idx
 
 
 def fnCheckLinearity(point1, point2, point3):
-    threshold_linearity = 50
+    threshold_linearity = 100 # 50
     x1, y1 = point1
     x2, y2 = point3
     if x2 - x1 != 0:
@@ -72,7 +73,7 @@ def fnCheckLinearity(point1, point2, point3):
 
 
 def fnCheckDistanceIsEqual(point1, point2, point3):
-    threshold_distance_equality = 3
+    threshold_distance_equality = 15 #3
     distance1 = fnCalcDistanceDot2Dot(point1[0], point1[1], point2[0], point2[1])
     distance2 = fnCalcDistanceDot2Dot(point2[0], point2[1], point3[0], point3[1])
     std = np.std([distance1, distance2])
@@ -119,13 +120,18 @@ class DetectLevelNode(Node):
 
         # delcare parameters
         self.declare_parameter('detect.level.red.hue_l', 0, descriptor=hue_l_descriptor)
-        self.declare_parameter('detect.level.red.hue_h', 179, descriptor=hue_h_descriptor)
-        self.declare_parameter('detect.level.red.saturation_l', 24, descriptor=sat_l_descriptor)
+        self.declare_parameter('detect.level.red.hue_h', 24, descriptor=hue_h_descriptor)
+        self.declare_parameter('detect.level.red.saturation_l', 20, descriptor=sat_l_descriptor)
         self.declare_parameter('detect.level.red.saturation_h', 255, descriptor=sat_h_descriptor)
-        self.declare_parameter('detect.level.red.lightness_l', 207, descriptor=light_l_descriptor)
-        self.declare_parameter('detect.level.red.lightness_h', 162, descriptor=light_h_descriptor)
+        self.declare_parameter('detect.level.red.lightness_l', 166, descriptor=light_l_descriptor)
+        self.declare_parameter('detect.level.red.lightness_h', 255, descriptor=light_h_descriptor)
 
         self.declare_parameter('is_detection_calibration_mode', False)
+
+        self.declare_parameter('enabled', True)
+        self.enabled = self.get_parameter('enabled').value
+
+        
 
         # get parameters
         self.hue_red_l = self.get_parameter('detect.level.red.hue_l').value
@@ -172,8 +178,10 @@ class DetectLevelNode(Node):
             self.create_subscription(
                 Image, '/detect/image_input', self.get_image, 10)
 
-        self.create_subscription(
-            UInt8, '/detect/level_crossing_order', self.level_crossing_order, 10)
+        self.pub_level_state = self.create_publisher(UInt8, '/detect/level_crossing_state', 10)
+
+        # self.create_subscription(
+        #     UInt8, '/detect/level_crossing_order', self.level_crossing_order, 10)
 
         self.timer = self.create_timer(1.0/15.0, self.timer_callback)
 
@@ -181,7 +189,9 @@ class DetectLevelNode(Node):
 
     def on_parameter_change(self, params):
         for param in params:
-            if param.name == 'detect.level.red.hue_l':
+            if param.name == 'enabled':
+                    self.enabled = param.value
+            elif param.name == 'detect.level.red.hue_l':
                 self.hue_red_l = param.value
             elif param.name == 'detect.level.red.hue_h':
                 self.hue_red_h = param.value
@@ -197,8 +207,21 @@ class DetectLevelNode(Node):
         return SetParametersResult(successful=True)
 
     def timer_callback(self):
+        if not self.enabled:
+            return
         if self.cv_image is not None:
-            self.find_level()
+            is_detected, is_close, is_opened = self.find_level()
+            state_msg = UInt8()
+            if is_close:
+                state_msg.data = 2
+            elif is_detected:
+                state_msg.data = 1
+            elif is_opened:
+                state_msg.data = 3
+            else:
+                state_msg.data = 0
+            self._last_published_state = state_msg.data
+            self.pub_level_state.publish(state_msg)
 
     def get_image(self, image_msg):
         if self.counter % 3 != 0:
@@ -216,43 +239,44 @@ class DetectLevelNode(Node):
             except Exception as e:
                 self.get_logger().error('CV Bridge error: %s' % str(e))
 
-    def level_crossing_order(self, order_msg):
-        pub_level_crossing_return = UInt8()
-        if order_msg.data == self.StepOfLevelCrossing.pass_level.value:
-            while rclpy.ok():
-                is_level_detected, _, _ = self.find_level()
-                rclpy.spin_once(self, timeout_sec=0.01)
-                if is_level_detected:
-                    self.get_logger().info('Level Detected')
-                    max_vel_msg = Float64()
-                    max_vel_msg.data = 0.03
-                    self.pub_max_vel.publish(max_vel_msg)
-                    break
+    # def level_crossing_order(self, order_msg):
+    #     pub_level_crossing_return = UInt8()
+    #     if order_msg.data == self.StepOfLevelCrossing.pass_level.value:
+    #         while rclpy.ok():
+    #             is_level_detected, _, _ = self.find_level()
+    #             rclpy.spin_once(self, timeout_sec=0.01)
+    #             if is_level_detected:
+    #                 self.get_logger().info('Level Detected')
+    #                 max_vel_msg = Float64()
+    #                 max_vel_msg.data = 0.03
+    #                 self.pub_max_vel.publish(max_vel_msg)
+    #                 break
 
-            while rclpy.ok():
-                _, is_level_close, _ = self.find_level()
-                rclpy.spin_once(self, timeout_sec=0.01)
-                if is_level_close:
-                    self.get_logger().info('STOP')
-                    max_vel_msg = Float64()
-                    max_vel_msg.data = 0.0
-                    self.pub_max_vel.publish(max_vel_msg)
-                    break
+    #         while rclpy.ok():
+    #             _, is_level_close, _ = self.find_level()
+    #             rclpy.spin_once(self, timeout_sec=0.01)
+    #             if is_level_close:
+    #                 self.get_logger().info('STOP')
+    #                 max_vel_msg = Float64()
+    #                 max_vel_msg.data = 0.0
+    #                 self.pub_max_vel.publish(max_vel_msg)
+    #                 break
 
-            while rclpy.ok():
-                _, _, is_level_opened = self.find_level()
-                rclpy.spin_once(self, timeout_sec=0.01)
-                if is_level_opened:
-                    self.get_logger().info('GO')
-                    max_vel_msg = Float64()
-                    max_vel_msg.data = 0.05
-                    self.pub_max_vel.publish(max_vel_msg)
-                    break
+    #         while rclpy.ok():
+    #             _, _, is_level_opened = self.find_level()
+    #             rclpy.spin_once(self, timeout_sec=0.01)
+    #             if is_level_opened:
+    #                 self.get_logger().info('GO')
+    #                 max_vel_msg = Float64()
+    #                 max_vel_msg.data = 0.05
+    #                 self.pub_max_vel.publish(max_vel_msg)
+    #                 break
 
-            pub_level_crossing_return.data = self.StepOfLevelCrossing.exit.value
+    #         pub_level_crossing_return.data = self.StepOfLevelCrossing.exit.value
 
-        self.get_logger().info(pub_level_crossing_return.data)
-        time.sleep(3.0)
+    #     self.get_logger().info(pub_level_crossing_return.data)
+    #     time.sleep(3.0)
+
 
     def find_level(self):
         mask = self.mask_red_of_level()
@@ -286,17 +310,25 @@ class DetectLevelNode(Node):
         is_level_opened = False
 
         params = cv2.SimpleBlobDetector_Params()
-        params.minThreshold = 0
-        params.maxThreshold = 255
-        params.filterByArea = True
-        params.minArea = 150
-        params.maxArea = 500
+
+        # params.minThreshold = 0
+        # params.maxThreshold = 255
+        # params.filterByArea = True
+        # params.minArea = 150
+        # params.maxArea = 500
+        # params.filterByConvexity = True
+        # params.minConvexity = 0.7
+
         params.filterByConvexity = True
-        params.minConvexity = 0.7
+        params.minConvexity = 0.4   # Reducido de 0.7
+        params.filterByCircularity = False
+        params.filterByInertia = False
+        params.minArea = 50        # Reducido de 150 para detectar la barrera desde más lejos
 
         # create blob detector
         detector = cv2.SimpleBlobDetector_create(params)
-        keypts = detector.detect(mask)
+        keypts_raw = detector.detect(mask)
+        keypts = sorted(keypts_raw, key=lambda kp: kp.size, reverse=True)[:3]
         frame = cv2.drawKeypoints(
             self.cv_image, keypts,
             np.array([]),
@@ -306,6 +338,7 @@ class DetectLevelNode(Node):
 
         mean_x = 0.0
         mean_y = 0.0
+        
 
         if len(keypts) == 3:
             for kp in keypts:
@@ -358,9 +391,12 @@ class DetectLevelNode(Node):
                         self.stop_bar_state = 'stop'
                         self.get_logger().info(self.stop_bar_state)
 
-        elif len(keypts) <= 1:
+        elif len(keypts) <= 0:
             is_level_opened = True
             self.stop_bar_state = 'go'
+        # elif len(keypts) == 0:
+        #     is_level_opened = True
+        #     self.stop_bar_state = 'go'
 
         if self.pub_image_type == 'compressed':
             comp_img_msg = self.cv_bridge.cv2_to_compressed_imgmsg(frame, dst_format='jpg')
