@@ -1,6 +1,10 @@
 # ROS 2 AutoRace State Machine Extension
 
 This repository contains a customized version of the public TurtleBot3 AutoRace codebase for **ROS 2 Humble**, extended with a state-machine-based mission controller and multiple improvements across detection and mission nodes.
+![Working demo](capture.png)
+
+## Demo
+[![Watch the AutoRace run](docs/autorace_thumbnail.png)](https://youtu.be/AlN41Yxkl2s)
 
 The main goal of this work was to improve autonomy, coordination between nodes, and overall mission reliability during the AutoRace challenge. In addition to the state machine implementation, several nodes were modified to improve sign detection, mission transitions, and communication flow between perception and control components.
 
@@ -45,6 +49,3 @@ turtlebot3_autorace_mission/
 - Some files were adapted to fit the challenge requirements and improve practical performance during testing.
 
 
-## Demo
-
-[![Watch the AutoRace run](docs/autorace_thumbnail.png)](https://youtu.be/AlN41Yxkl2s)
